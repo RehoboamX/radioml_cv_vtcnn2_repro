@@ -1,11 +1,9 @@
-"""Shared defaults for the reproduction scripts."""
+"""Shared defaults for the fixed-budget reproduction scripts."""
 
-SEED = 2016
-LEARNING_RATE = 1e-4
+SEED = 0
+LEARNING_RATE = 1e-3
 BATCH_SIZE = 1024
-MAX_EPOCHS = 500
-EARLY_STOPPING_PATIENCE = 20
+MAX_EPOCHS = 100
 NUM_CLASSES = 11
-TRAIN_PER_GROUP = 720
-VAL_PER_GROUP = 80
+TRAIN_PER_GROUP = 800
 TEST_PER_GROUP = 200

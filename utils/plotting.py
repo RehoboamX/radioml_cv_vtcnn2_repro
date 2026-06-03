@@ -3,28 +3,26 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 
-def save_training_curves(history, output_dir, stem):
+def save_training_comparison(histories_by_name, output_dir):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    epochs = [row["epoch"] for row in history]
 
-    plt.figure()
-    plt.plot(epochs, [row["train_loss"] for row in history])
-    plt.xlabel("Epoch")
-    plt.ylabel("Training loss")
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(output_dir / f"{stem}_train_loss.png", dpi=160)
-    plt.close()
-
-    plt.figure()
-    plt.plot(epochs, [row["val_accuracy"] for row in history])
-    plt.xlabel("Epoch")
-    plt.ylabel("Validation accuracy")
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(output_dir / f"{stem}_val_accuracy.png", dpi=160)
-    plt.close()
+    for metric, ylabel, filename in (
+        ("train_loss", "Training loss", "train_loss_comparison.png"),
+        ("train_accuracy", "Training accuracy", "train_accuracy_comparison.png"),
+    ):
+        plt.figure()
+        for name, history in histories_by_name.items():
+            epochs = [row["epoch"] for row in history]
+            values = [row[metric] for row in history]
+            plt.plot(epochs, values, label=name)
+        plt.xlabel("Epoch")
+        plt.ylabel(ylabel)
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(output_dir / filename, dpi=160)
+        plt.close()
 
 
 def save_per_snr_curve(series_by_name, output_path):

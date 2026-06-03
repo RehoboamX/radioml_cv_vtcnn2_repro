@@ -4,7 +4,6 @@ import json
 import torch
 
 from utils.checkpoint import count_trainable_parameters, save_checkpoint
-from utils.metrics import evaluate_loader
 
 
 def train_one_epoch(model, loader, criterion, optimizer, device):
@@ -36,60 +35,44 @@ def run_training(
     model_kwargs,
     class_names,
     train_loader,
-    val_loader,
     device,
     learning_rate,
     max_epochs,
-    patience,
     checkpoint_path,
     history_path,
 ):
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     history = []
-    best_accuracy = float("-inf")
-    epochs_without_improvement = 0
 
     for epoch in range(1, max_epochs + 1):
         train_metrics = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        val_metrics = evaluate_loader(model, val_loader, criterion, device)
         record = {
             "epoch": epoch,
             "train_loss": train_metrics["loss"],
             "train_accuracy": train_metrics["accuracy"],
-            "val_loss": val_metrics["loss"],
-            "val_accuracy": val_metrics["accuracy"],
         }
         history.append(record)
         print(
             f"epoch={epoch:03d} train_loss={record['train_loss']:.5f} "
-            f"train_acc={record['train_accuracy']:.4f} "
-            f"val_loss={record['val_loss']:.5f} val_acc={record['val_accuracy']:.4f}"
+            f"train_acc={record['train_accuracy']:.4f}"
         )
 
-        if record["val_accuracy"] > best_accuracy:
-            best_accuracy = record["val_accuracy"]
-            epochs_without_improvement = 0
-            save_checkpoint(
-                checkpoint_path,
-                model,
-                model_name,
-                model_kwargs,
-                class_names,
-                epoch,
-                best_accuracy,
-            )
-        else:
-            epochs_without_improvement += 1
-            if epochs_without_improvement >= patience:
-                print(f"early stopping after {epoch} epochs")
-                break
-
+    save_checkpoint(
+        checkpoint_path,
+        model,
+        model_name,
+        model_kwargs,
+        class_names,
+        max_epochs,
+    )
     payload = {
         "model_name": model_name,
         "model_kwargs": model_kwargs,
         "trainable_parameters": count_trainable_parameters(model),
-        "best_val_accuracy": best_accuracy,
+        "checkpoint_selection": "final_epoch",
+        "checkpoint_epoch": max_epochs,
+        "learning_rate": learning_rate,
         "history": history,
     }
     history_path = Path(history_path)

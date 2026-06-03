@@ -1,12 +1,12 @@
 # RadioML CV-VTCNN2 Reproduction
 
-PyTorch reproduction of the real-valued VTCNN2 baseline and the complex-valued
-CV-VTCNN2 baseline discussed in Tu et al. 2020, using RadioML2016.10A.
+PyTorch implementation of real-valued VTCNN2 and complex-valued CV-VTCNN2 for
+RadioML2016.10A, based on Tu et al. 2020 and the official RadioML VTCNN2 example.
 
-The repository prioritizes a faithful, documented, auditable baseline over accuracy
-tuning. The default CV-VTCNN2 is the paper-structure same-width model. The
-`param_matched` variant is the appropriate comparison when controlling trainable
-parameter count. See `REPRODUCTION_NOTES.md` before comparing numerical results.
+This repository uses a clean fixed-budget AMC protocol: every modulation/SNR group is
+split into 800 training samples and 200 test samples, all models train for the same 100
+epochs, and the test set is evaluated only after training. There is no validation set,
+early stopping, or checkpoint selection.
 
 ## References
 
@@ -14,12 +14,10 @@ parameter count. See `REPRODUCTION_NOTES.md` before comparing numerical results.
   https://www.eng.auburn.edu/~szm0001/papers/TuTVT2020.pdf
 - Official RadioML VTCNN2 example notebook:
   https://github.com/radioML/examples/blob/master/modulation_recognition/RML2016.10a_VTCNN2_example.ipynb
-- Optional fixed RadioML examples:
-  https://github.com/sofwerx/radioML_examples
 
 ## Dataset
 
-Download RadioML2016.10A separately. Place the Python pickle file at:
+Download RadioML2016.10A separately and place the pickle file at:
 
 ```text
 data/RML2016.10a_dict.dat
@@ -37,6 +35,21 @@ python -m pip install -r requirements.txt
 
 The scripts use CUDA automatically when available.
 
+## Fixed-Budget Protocol
+
+- Split: 800 train / 200 test per modulation and SNR
+- Validation set: none
+- Optimizer: Adam
+- Learning rate: `1e-3`
+- Batch size: `1024`
+- Epochs: `100`
+- Seed: `2016`
+- Checkpoint: final epoch only
+- Test evaluation: overall accuracy and per-SNR accuracy after training
+
+The fixed learning rate and epoch budget are shared by all models so their training
+loss and training accuracy curves can be compared directly.
+
 ## Run
 
 Run commands from this directory:
@@ -44,74 +57,49 @@ Run commands from this directory:
 ```bash
 python prepare_data.py
 python sanity_checks.py --dataset data/RML2016.10a_dict.dat
+
 python train_vtcnn2.py
 python train_cv_vtcnn2.py
-python evaluate.py --checkpoint results/vtcnn2_best.pt --output results/vtcnn2_test_metrics.json
-python evaluate.py --checkpoint results/cv_vtcnn2_best.pt --output results/cv_vtcnn2_test_metrics.json
+python train_cv_vtcnn2.py \
+  --variant param_matched \
+  --checkpoint results/cv_vtcnn2_param_matched_final.pt \
+  --history results/cv_vtcnn2_param_matched_history.json
+
+python evaluate.py \
+  --checkpoint results/vtcnn2_final.pt \
+  --output results/vtcnn2_test_metrics.json
+python evaluate.py \
+  --checkpoint results/cv_vtcnn2_same_width_final.pt \
+  --output results/cv_vtcnn2_same_width_test_metrics.json
+python evaluate.py \
+  --checkpoint results/cv_vtcnn2_param_matched_final.pt \
+  --output results/cv_vtcnn2_param_matched_test_metrics.json
+
 python plot_results.py
 ```
 
-The default split is balanced independently for every modulation and SNR:
+## Models
 
-```text
-720 train + 80 validation + 200 test
-```
+- `VTCNN2`: official real-valued VTCNN2 structure.
+- `CV-VTCNN2 same_width`: complex convolution and hidden dense layers with the same
+  widths as VTCNN2.
+- `CV-VTCNN2 param_matched`: reduced complex widths for a trainable-parameter-count
+  comparison with VTCNN2.
 
-The 720/80 subsets come from the paper's 800-sample training pool. The 200 test
-samples are used only for final evaluation.
-
-## Parameter-Matched Comparison
-
-Train and evaluate the approximate parameter-matched complex model:
-
-```bash
-python train_cv_vtcnn2.py \
-  --variant param_matched \
-  --checkpoint results/cv_vtcnn2_param_matched_best.pt \
-  --history results/cv_vtcnn2_param_matched_history.json
-python evaluate.py \
-  --checkpoint results/cv_vtcnn2_param_matched_best.pt \
-  --output results/cv_vtcnn2_param_matched_test_metrics.json
-python plot_results.py \
-  --cv-history results/cv_vtcnn2_param_matched_history.json \
-  --cv-metrics results/cv_vtcnn2_param_matched_test_metrics.json \
-  --figures-dir figures/param_matched
-```
-
-The committed single-seed clean-validation results are:
-
-| Model | Trainable parameters | Test accuracy |
-| --- | ---: | ---: |
-| VTCNN2 | 2,830,427 | 0.5348 |
-| CV-VTCNN2 `param_matched` | 2,791,518 | 0.5386 |
-| CV-VTCNN2 same-width | 5,537,974 | 0.5474 |
-
-The parameter-matched model is about 1.4% smaller than VTCNN2 and is the fairer
-comparison for attributing gains to complex-valued modeling. The same-width result is
-retained as a structural replacement experiment, not a parameter-count-controlled
-comparison.
-
-## Optional Modes
-
-Create the notebook-like test-as-validation split:
-
-```bash
-python prepare_data.py --validation-mode paper_like --output-dir results/split_paper_like
-```
-
-`paper_like` can leak test information and is not the default.
+CV-VTCNN2 concatenates the real and imaginary parts of its final complex hidden
+features, then uses one real-valued linear classifier to produce 11 signed logits for
+`CrossEntropyLoss`.
 
 ## Outputs
 
-- `results/split/split_indices.npz`: deterministic split indices
+- `results/split/split_indices.npz`: deterministic train/test indices
 - `results/split/split_metadata.json`: split counts and metadata
-- `results/*_best.pt`: best validation checkpoints
-- `results/*_history.json`: training logs and parameter counts
+- `results/*_final.pt`: final-epoch checkpoints
+- `results/*_history.json`: fixed-budget training histories and parameter counts
 - `results/*_test_metrics.json`: overall and per-SNR test accuracy
-- `figures/*_train_loss.png`: training loss curves
-- `figures/*_val_accuracy.png`: validation accuracy curves
-- `figures/per_snr_test_accuracy.png`: same-width final per-SNR comparison
-- `figures/param_matched/per_snr_test_accuracy.png`: parameter-matched fair comparison
+- `figures/train_loss_comparison.png`: aligned training loss curves
+- `figures/train_accuracy_comparison.png`: aligned training accuracy curves
+- `figures/per_snr_test_accuracy.png`: final per-SNR test comparison
 
 ## Tests
 
@@ -120,5 +108,5 @@ python -m pytest tests -q
 python sanity_checks.py
 ```
 
-Passing `--dataset` to `sanity_checks.py` also validates all per-SNR/per-class split
-counts against the real dataset.
+Passing `--dataset` to `sanity_checks.py` validates all per-SNR/per-class split counts
+against the real dataset.

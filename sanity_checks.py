@@ -1,6 +1,5 @@
 import argparse
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -56,7 +55,7 @@ def check_models():
     assert torch.isfinite(real_logits).all() and torch.isfinite(complex_logits).all()
     print(f"VTCNN2 trainable parameters: {count_trainable_parameters(VTCNN2()):,}")
     print(
-        "CV-VTCNN2 paper_faithful trainable parameters: "
+        "CV-VTCNN2 same_width trainable parameters: "
         f"{count_trainable_parameters(CVVTCNN2()):,}"
     )
     print(

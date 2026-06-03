@@ -3,7 +3,7 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 
-from config import BATCH_SIZE, EARLY_STOPPING_PATIENCE, LEARNING_RATE, MAX_EPOCHS, SEED
+from config import BATCH_SIZE, LEARNING_RATE, MAX_EPOCHS, SEED
 from data.dataset import load_datasets
 from data.split import load_split
 from models.cv_vtcnn2 import CVVTCNN2, VARIANTS
@@ -15,13 +15,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train the complex-valued CV-VTCNN2.")
     parser.add_argument("--dataset", default="data/RML2016.10a_dict.dat")
     parser.add_argument("--split-dir", default="results/split")
-    parser.add_argument("--checkpoint", default="results/cv_vtcnn2_best.pt")
-    parser.add_argument("--history", default="results/cv_vtcnn2_history.json")
-    parser.add_argument("--variant", choices=tuple(VARIANTS), default="paper_faithful")
+    parser.add_argument("--checkpoint", default="results/cv_vtcnn2_same_width_final.pt")
+    parser.add_argument("--history", default="results/cv_vtcnn2_same_width_history.json")
+    parser.add_argument("--variant", choices=tuple(VARIANTS), default="same_width")
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     parser.add_argument("--learning-rate", type=float, default=LEARNING_RATE)
-    parser.add_argument("--max-epochs", type=int, default=MAX_EPOCHS)
-    parser.add_argument("--patience", type=int, default=EARLY_STOPPING_PATIENCE)
+    parser.add_argument("--epochs", type=int, default=MAX_EPOCHS)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=SEED)
     return parser.parse_args()
@@ -42,13 +41,6 @@ def main():
         num_workers=args.num_workers,
         pin_memory=device.type == "cuda",
     )
-    val_loader = DataLoader(
-        datasets["val"],
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=device.type == "cuda",
-    )
     model_kwargs = {
         "num_classes": len(class_names),
         "dropout": 0.5,
@@ -56,8 +48,8 @@ def main():
     }
     model = CVVTCNN2(**model_kwargs).to(device)
     print(
-        f"device={device} variant={args.variant} "
-        f"validation_mode={metadata['validation_mode']}"
+        f"device={device} variant={args.variant} split_protocol={metadata['split_protocol']} "
+        f"epochs={args.epochs} learning_rate={args.learning_rate}"
     )
     run_training(
         model=model,
@@ -65,11 +57,9 @@ def main():
         model_kwargs=model_kwargs,
         class_names=class_names,
         train_loader=train_loader,
-        val_loader=val_loader,
         device=device,
         learning_rate=args.learning_rate,
-        max_epochs=args.max_epochs,
-        patience=args.patience,
+        max_epochs=args.epochs,
         checkpoint_path=args.checkpoint,
         history_path=args.history,
     )

@@ -10,22 +10,15 @@ def _group_key(label):
     return f"{mod}|{int(snr)}"
 
 
-def build_balanced_split(
-    labels,
-    seed=2016,
-    train_per_group=720,
-    val_per_group=80,
-    test_per_group=200,
-    validation_mode="clean",
-):
-    """Create deterministic per-modulation/per-SNR indices."""
+def build_balanced_split(labels, seed=2016, train_per_group=800, test_per_group=200):
+    """Create a deterministic 800/200 train/test split per modulation and SNR."""
     groups = defaultdict(list)
     for index, label in enumerate(labels):
         groups[tuple(label)].append(index)
 
     rng = np.random.default_rng(seed)
-    split = {"train": [], "val": [], "test": []}
-    required = train_per_group + val_per_group + test_per_group
+    split = {"train": [], "test": []}
+    required = train_per_group + test_per_group
     for label in sorted(groups, key=lambda item: (str(item[0]), int(item[1]))):
         indices = np.asarray(groups[label], dtype=np.int64)
         if len(indices) != required:
@@ -33,37 +26,16 @@ def build_balanced_split(
                 f"Expected {required} samples for {label}, found {len(indices)}."
             )
         shuffled = rng.permutation(indices)
-        train_end = train_per_group
-        val_end = train_end + val_per_group
-        split["train"].extend(shuffled[:train_end])
-        split["val"].extend(shuffled[train_end:val_end])
-        split["test"].extend(shuffled[val_end:])
-
-    if validation_mode == "paper_like":
-        split["train"] = list(split["train"]) + list(split["val"])
-        split["val"] = list(split["test"])
-    elif validation_mode != "clean":
-        raise ValueError("validation_mode must be 'clean' or 'paper_like'.")
+        split["train"].extend(shuffled[:train_per_group])
+        split["test"].extend(shuffled[train_per_group:])
 
     return {name: np.asarray(values, dtype=np.int64) for name, values in split.items()}
 
 
-def validate_split_counts(
-    labels,
-    split,
-    train_per_group=720,
-    val_per_group=80,
-    test_per_group=200,
-    validation_mode="clean",
-):
-    expected = {
-        "train": train_per_group,
-        "val": val_per_group,
-        "test": test_per_group,
-    }
-    if validation_mode == "paper_like":
-        expected["train"] = train_per_group + val_per_group
-        expected["val"] = test_per_group
+def validate_split_counts(labels, split, train_per_group=800, test_per_group=200):
+    expected = {"train": train_per_group, "test": test_per_group}
+    if set(split) != set(expected):
+        raise AssertionError(f"Split keys must be {sorted(expected)}, found {sorted(split)}.")
 
     counts = {}
     for name, indices in split.items():
@@ -76,13 +48,9 @@ def validate_split_counts(
                 f"expected {expected[name]}."
             )
 
-    train, val, test = (set(map(int, split[name])) for name in ("train", "val", "test"))
+    train, test = (set(map(int, split[name])) for name in ("train", "test"))
     if train & test:
         raise AssertionError("Train and test splits overlap.")
-    if validation_mode == "clean" and (train & val or val & test):
-        raise AssertionError("Clean train, validation, and test splits must be disjoint.")
-    if validation_mode == "paper_like" and val != test:
-        raise AssertionError("paper_like validation must be identical to the test split.")
     return counts
 
 

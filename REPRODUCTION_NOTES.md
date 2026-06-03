@@ -2,9 +2,13 @@
 
 ## Scope
 
-This repository reproduces the VTCNN2 and CV-VTCNN2 comparison from Tu et al. 2020.
+This repository implements the VTCNN2 and CV-VTCNN2 comparison discussed by Tu et al.
+2020. It follows the paper and official RadioML example for the model family and key
+layer dimensions, while using a documented clean fixed-budget training protocol for an
+auditable comparison.
+
 It does not add data augmentation, learning-rate schedules, ensembling, multi-seed
-selection, or architecture changes intended to improve accuracy.
+selection, or architecture changes intended only to improve accuracy.
 
 ## VTCNN2 Structure
 
@@ -31,75 +35,63 @@ and uses `CrossEntropyLoss`, which is the numerically stable equivalent.
 ## Data Split
 
 Tu et al. state that RadioML2016.10A contains 1000 samples per modulation class per
-SNR, and that 800 randomly selected samples are used for training while the remaining
-200 are used for test. The paper also states that classes are balanced.
+SNR, with 800 randomly selected samples used for training and the remaining 200 used
+for test. This repository creates that split independently for every modulation/SNR
+group with seed `2016`.
 
-The default `clean` protocol first creates that 800/200 split independently for every
-modulation/SNR group, then takes 80 samples from the 800-sample training pool for
-validation. This yields 720 train, 80 validation, and 200 final test samples per group.
-
-The official notebook instead performs a global 50/50 random split and uses the test
-set as validation. That behavior is not used by default. The explicit `paper_like`
-validation mode makes validation identical to test and is provided only for diagnostic
-comparison; it can cause test leakage.
+There is no validation set. The test set is not used for early stopping, checkpoint
+selection, or hyperparameter selection. This avoids the test-as-validation leakage in
+the official VTCNN2 notebook.
 
 ## CV-VTCNN2 Representation And Layers
 
-Tu et al. represent complex tensors with the first half of feature maps as real and
-the second half as imaginary. This repository uses that channel-stacked representation
-everywhere.
+Tu et al. represent complex tensors with the first half of feature maps as real and the
+second half as imaginary. This repository uses that channel-stacked representation
+everywhere. For one complex input channel, the input tensor is `[I, Q]`.
 
-For one complex input channel, the input tensor is `[I, Q]`. Complex convolution and
-complex dense layers implement:
+Complex convolution and complex dense layers implement:
 
 ```text
 (A + iB)(x + iy) = (Ax - By) + i(Bx + Ay)
 ```
 
-The paper states that CV-VTCNN2 has the same architecture as VTCNN2 with convolution
-and dense layers replaced by complex-valued versions. Therefore the default
-`paper_faithful` variant keeps complex widths `256 -> 80 -> 256 -> 11`. The
-`same_width` name is an alias for this configuration.
+The `same_width` variant keeps hidden complex widths `256 -> 80 -> 256`. The
+`param_matched` variant uses widths `181 -> 57 -> 181`, approximately scaling hidden
+widths by `1/sqrt(2)` to keep the number of real trainable scalars close to VTCNN2.
 
-The paper also states that complex networks use half the real-valued parameter amount
-for fair representation capacity, but it does not provide the exact reduced VTCNN2
-widths. The optional `param_matched` variant uses widths `181 -> 57 -> 181 -> 11`,
-approximately scaling hidden widths by `1/sqrt(2)`. It is not the default model
-configuration, but it is the primary fair comparison when attributing accuracy
-differences to complex-valued modeling rather than parameter count.
-
-The resulting trainable parameter counts are:
+The trainable parameter counts before training are approximately:
 
 | Model | Trainable parameters | Relative to VTCNN2 |
 | --- | ---: | ---: |
 | VTCNN2 | 2,830,427 | 1.000 |
-| CV-VTCNN2 `param_matched` | 2,791,518 | 0.986 |
-| CV-VTCNN2 same-width | 5,537,974 | 1.956 |
+| CV-VTCNN2 `param_matched` | 2,791,507 | 0.986 |
+| CV-VTCNN2 `same_width` | 5,537,963 | 1.956 |
 
-The same-width model therefore answers a different question: what happens when each
-real-valued layer is replaced by a complex-valued layer without reducing width.
+The same-width model is a structural replacement experiment. The param-matched model
+is the fairer comparison when attributing differences to complex-valued modeling rather
+than parameter count.
 
-## Complex Activation, Dropout, And Logits
+## Complex Activation, Dropout, And Classification Head
 
-The paper says VTCNN2 uses ReLU except for the output Softmax, but it does not define a
-complex ReLU for this model. This implementation applies ReLU independently to real
-and imaginary components, a conservative component-wise choice.
+The paper does not define the exact complex activation, dropout mask, or conversion
+from complex class features to real Softmax inputs for CV-VTCNN2.
 
+This implementation applies ReLU independently to real and imaginary components.
 Dropout uses one shared mask for the real and imaginary components of each complex
-activation so that dropping a feature removes the whole complex value.
+feature. After the final complex hidden layer, real and imaginary features are
+concatenated and passed to one real-valued linear classifier that emits 11 signed real
+logits for `CrossEntropyLoss`.
 
-The paper does not state how complex class scores become real Softmax inputs. This
-implementation converts the final complex score to a non-negative real logit using
-magnitude squared, `real^2 + imag^2`, then passes those logits to `CrossEntropyLoss`.
-This is a PyTorch implementation choice and can affect numerical agreement.
+The real-valued classification head is a PyTorch/AMC implementation choice. It uses
+both real and imaginary features, but it means the final classification layer is not a
+complex dense layer. This choice can affect numerical agreement with Tu et al.
 
 ## Complex Batch Normalization
 
-`ComplexBatchNorm1d` implements the 2x2 real/imaginary covariance whitening described
-by Tu et al. and Trabelsi et al., including learnable symmetric scaling and complex
-shift. It is implemented for completeness but is not inserted into default CV-VTCNN2:
-the official VTCNN2 has no batch normalization, and the paper only explicitly says to
-replace convolution and dense layers.
+`ComplexBatchNorm1d` implements 2x2 real/imaginary covariance whitening with learnable
+symmetric scaling and complex shift. It is implemented for completeness but is not
+inserted into CV-VTCNN2 because the official VTCNN2 has no batch normalization and the
+paper does not clearly specify adding it to this architecture.
 
 ## Initialization
 
@@ -112,44 +104,51 @@ defaults may differ from the original Keras/TensorFlow implementation.
 The real VTCNN2 follows the notebook's intent: Glorot initialization for convolution
 and He initialization for dense layers.
 
-## Training
+## Fixed-Budget Training Protocol
 
 - Optimizer: Adam
-- Learning rate: `1e-4`, from Tu et al.
-- Early stopping patience: `20`, from Tu et al.
-- Maximum epochs: `500`, intentionally high so early stopping controls termination
-- Batch size: `1024`, from the official notebook
-- Seed: `2016`, matching the notebook's split seed
-- Model selection: best validation accuracy checkpoint
+- Learning rate: `1e-3`
+- Batch size: `1024`
+- Epochs: `100`
+- Seed: `2016`
+- Validation set: none
+- Early stopping: none
+- Checkpoint selection: final epoch only
+- Test evaluation: once after training
 
-The paper does not fully specify batch size, validation policy, random seed, complex
-output conversion, or exact reduced widths. These are likely sources of discrepancy.
+Tu et al. report Adam with learning rate `1e-4` and early-stopping patience `20`, but do
+not document the validation data used for early stopping. The official notebook uses a
+global 50/50 split and reuses the test set as validation. This repository intentionally
+does not copy that leakage-prone behavior.
+
+The fixed-budget protocol is not a literal reproduction of every Tu et al. training
+hyperparameter. It is a clean AMC baseline designed to compare aligned training loss
+and accuracy curves under the same number of epochs and training samples.
 
 ## Committed Single-Seed Results
 
-All results below use the same clean split, seed, optimizer, batch size, early stopping
-rule, and best-validation-checkpoint evaluation:
+All models use the same 800/200 split, seed, batch size, learning rate, and 100-epoch
+training budget. The final-epoch checkpoints give:
 
-| Model | Best validation accuracy | Test accuracy | Checkpoint epoch |
-| --- | ---: | ---: | ---: |
-| VTCNN2 | 0.5356 | 0.5348 | 306 |
-| CV-VTCNN2 `param_matched` | 0.5407 | 0.5386 | 126 |
-| CV-VTCNN2 same-width | 0.5487 | 0.5474 | 116 |
+| Model | Final train accuracy | Test accuracy |
+| --- | ---: | ---: |
+| VTCNN2 | 0.5431 | 0.5383 |
+| CV-VTCNN2 `param_matched` | 0.6116 | 0.5356 |
+| CV-VTCNN2 `same_width` | 0.6776 | 0.5313 |
 
-The parameter-matched complex model improves test accuracy by about 0.38 percentage
-points over VTCNN2 in this single-seed run. This is a modest result and should not be
-treated as a statistically robust claim without a multi-seed experiment. The larger
-same-width gain is not a parameter-count-controlled comparison.
-
+The complex models reach substantially higher training accuracy but do not outperform
+VTCNN2 on the final test set in this single-seed fixed-budget run. This suggests a
+generalization gap under the chosen real-valued classification head and training
+protocol. The result should be reported as-is rather than used to tune the epoch budget
+or learning rate against the test set.
 ## Expected Sources Of Numerical Difference
 
-- Clean validation versus test-as-validation
+- Fixed-budget training versus Tu et al.'s incompletely documented early stopping
 - Per-group 800/200 split versus the notebook's global 50/50 split
 - PyTorch versus Keras/TensorFlow convolution and initialization details
-- Complex activation, dropout, and final magnitude-squared logits
+- Complex activation, shared-mask dropout, and the real-valued classification head
 - Exact sample ordering and random-number generators
-- Early stopping criterion and selected epoch
-- Whether the paper's plotted CV-VTCNN2 used same-width or parameter-matched layers
+- Same-width versus parameter-matched CV-VTCNN2 capacity
 
 Results that differ from the paper should be analyzed through these documented choices
 rather than by adding unrelated training tricks.

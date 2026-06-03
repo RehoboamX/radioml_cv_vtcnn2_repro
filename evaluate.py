@@ -18,7 +18,7 @@ MODEL_CLASSES = {"vtcnn2": VTCNN2, "cv_vtcnn2": CVVTCNN2}
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Evaluate a saved VTCNN2 checkpoint.")
+    parser = argparse.ArgumentParser(description="Evaluate a final VTCNN2 checkpoint.")
     parser.add_argument("--dataset", default="data/RML2016.10a_dict.dat")
     parser.add_argument("--split-dir", default="results/split")
     parser.add_argument("--checkpoint", required=True)
@@ -51,9 +51,9 @@ def main():
             "model_kwargs": checkpoint["model_kwargs"],
             "checkpoint": args.checkpoint,
             "checkpoint_epoch": checkpoint["epoch"],
-            "best_val_accuracy": checkpoint["val_accuracy"],
+            "checkpoint_selection": checkpoint["checkpoint_selection"],
             "trainable_parameters": checkpoint["trainable_parameters"],
-            "validation_mode": metadata["validation_mode"],
+            "split_protocol": metadata["split_protocol"],
         }
     )
     output = Path(args.output)

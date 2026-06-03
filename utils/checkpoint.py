@@ -7,7 +7,7 @@ def count_trainable_parameters(model):
     return sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)
 
 
-def save_checkpoint(path, model, model_name, model_kwargs, class_names, epoch, val_accuracy):
+def save_checkpoint(path, model, model_name, model_kwargs, class_names, epoch):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -17,7 +17,7 @@ def save_checkpoint(path, model, model_name, model_kwargs, class_names, epoch, v
             "model_kwargs": model_kwargs,
             "class_names": list(class_names),
             "epoch": int(epoch),
-            "val_accuracy": float(val_accuracy),
+            "checkpoint_selection": "final_epoch",
             "trainable_parameters": count_trainable_parameters(model),
         },
         path,

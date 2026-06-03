@@ -1,8 +1,5 @@
-import math
-
 import torch
 from torch import nn
-import torch.nn.functional as F
 
 from models.complex_layers import (
     ComplexConv1d,
@@ -14,16 +11,15 @@ from models.complex_layers import (
 
 
 VARIANTS = {
-    "paper_faithful": (256, 80, 256),
     "same_width": (256, 80, 256),
     "param_matched": (181, 57, 181),
 }
 
 
 class CVVTCNN2(nn.Module):
-    """Complex-valued VTCNN2 with one complex I/Q input channel."""
+    """Complex-valued VTCNN2 with a real-valued classification head."""
 
-    def __init__(self, num_classes=11, dropout=0.5, variant="paper_faithful"):
+    def __init__(self, num_classes=11, dropout=0.5, variant="same_width"):
         super().__init__()
         if variant not in VARIANTS:
             raise ValueError(f"Unknown variant {variant!r}; choose from {sorted(VARIANTS)}.")
@@ -38,7 +34,9 @@ class CVVTCNN2(nn.Module):
         self.fc1 = ComplexLinear(conv2_channels * 132, dense_features, init_mode="he")
         self.act3 = ComplexReLU()
         self.drop3 = ComplexDropout(dropout)
-        self.fc2 = ComplexLinear(dense_features, num_classes, init_mode="he")
+        self.classifier = nn.Linear(dense_features * 2, num_classes)
+        nn.init.kaiming_normal_(self.classifier.weight, nonlinearity="linear")
+        nn.init.zeros_(self.classifier.bias)
 
     def forward(self, x):
         x = self.drop1(self.act1(self.conv1(x)))
@@ -48,6 +46,5 @@ class CVVTCNN2(nn.Module):
             [torch.flatten(xr, start_dim=1), torch.flatten(xi, start_dim=1)], dim=1
         )
         x = self.drop3(self.act3(self.fc1(x)))
-        x = self.fc2(x)
         xr, xi = split_complex(x)
-        return xr.square() + xi.square()
+        return self.classifier(torch.cat([xr, xi], dim=1))
