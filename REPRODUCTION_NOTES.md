@@ -64,7 +64,20 @@ and dense layers replaced by complex-valued versions. Therefore the default
 The paper also states that complex networks use half the real-valued parameter amount
 for fair representation capacity, but it does not provide the exact reduced VTCNN2
 widths. The optional `param_matched` variant uses widths `181 -> 57 -> 181 -> 11`,
-approximately scaling hidden widths by `1/sqrt(2)`. It is not the default result.
+approximately scaling hidden widths by `1/sqrt(2)`. It is not the default model
+configuration, but it is the primary fair comparison when attributing accuracy
+differences to complex-valued modeling rather than parameter count.
+
+The resulting trainable parameter counts are:
+
+| Model | Trainable parameters | Relative to VTCNN2 |
+| --- | ---: | ---: |
+| VTCNN2 | 2,830,427 | 1.000 |
+| CV-VTCNN2 `param_matched` | 2,791,518 | 0.986 |
+| CV-VTCNN2 same-width | 5,537,974 | 1.956 |
+
+The same-width model therefore answers a different question: what happens when each
+real-valued layer is replaced by a complex-valued layer without reducing width.
 
 ## Complex Activation, Dropout, And Logits
 
@@ -111,6 +124,22 @@ and He initialization for dense layers.
 
 The paper does not fully specify batch size, validation policy, random seed, complex
 output conversion, or exact reduced widths. These are likely sources of discrepancy.
+
+## Committed Single-Seed Results
+
+All results below use the same clean split, seed, optimizer, batch size, early stopping
+rule, and best-validation-checkpoint evaluation:
+
+| Model | Best validation accuracy | Test accuracy | Checkpoint epoch |
+| --- | ---: | ---: | ---: |
+| VTCNN2 | 0.5356 | 0.5348 | 306 |
+| CV-VTCNN2 `param_matched` | 0.5407 | 0.5386 | 126 |
+| CV-VTCNN2 same-width | 0.5487 | 0.5474 | 116 |
+
+The parameter-matched complex model improves test accuracy by about 0.38 percentage
+points over VTCNN2 in this single-seed run. This is a modest result and should not be
+treated as a statistically robust claim without a multi-seed experiment. The larger
+same-width gain is not a parameter-count-controlled comparison.
 
 ## Expected Sources Of Numerical Difference
 

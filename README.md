@@ -4,8 +4,9 @@ PyTorch reproduction of the real-valued VTCNN2 baseline and the complex-valued
 CV-VTCNN2 baseline discussed in Tu et al. 2020, using RadioML2016.10A.
 
 The repository prioritizes a faithful, documented, auditable baseline over accuracy
-tuning. The default CV-VTCNN2 is the paper-faithful same-width model. See
-`REPRODUCTION_NOTES.md` before comparing numerical results.
+tuning. The default CV-VTCNN2 is the paper-structure same-width model. The
+`param_matched` variant is the appropriate comparison when controlling trainable
+parameter count. See `REPRODUCTION_NOTES.md` before comparing numerical results.
 
 ## References
 
@@ -59,16 +60,38 @@ The default split is balanced independently for every modulation and SNR:
 The 720/80 subsets come from the paper's 800-sample training pool. The 200 test
 samples are used only for final evaluation.
 
-## Optional Modes
+## Parameter-Matched Comparison
 
-Train the approximate parameter-matched complex model:
+Train and evaluate the approximate parameter-matched complex model:
 
 ```bash
 python train_cv_vtcnn2.py \
   --variant param_matched \
   --checkpoint results/cv_vtcnn2_param_matched_best.pt \
   --history results/cv_vtcnn2_param_matched_history.json
+python evaluate.py \
+  --checkpoint results/cv_vtcnn2_param_matched_best.pt \
+  --output results/cv_vtcnn2_param_matched_test_metrics.json
+python plot_results.py \
+  --cv-history results/cv_vtcnn2_param_matched_history.json \
+  --cv-metrics results/cv_vtcnn2_param_matched_test_metrics.json \
+  --figures-dir figures/param_matched
 ```
+
+The committed single-seed clean-validation results are:
+
+| Model | Trainable parameters | Test accuracy |
+| --- | ---: | ---: |
+| VTCNN2 | 2,830,427 | 0.5348 |
+| CV-VTCNN2 `param_matched` | 2,791,518 | 0.5386 |
+| CV-VTCNN2 same-width | 5,537,974 | 0.5474 |
+
+The parameter-matched model is about 1.4% smaller than VTCNN2 and is the fairer
+comparison for attributing gains to complex-valued modeling. The same-width result is
+retained as a structural replacement experiment, not a parameter-count-controlled
+comparison.
+
+## Optional Modes
 
 Create the notebook-like test-as-validation split:
 
@@ -87,7 +110,8 @@ python prepare_data.py --validation-mode paper_like --output-dir results/split_p
 - `results/*_test_metrics.json`: overall and per-SNR test accuracy
 - `figures/*_train_loss.png`: training loss curves
 - `figures/*_val_accuracy.png`: validation accuracy curves
-- `figures/per_snr_test_accuracy.png`: final per-SNR comparison
+- `figures/per_snr_test_accuracy.png`: same-width final per-SNR comparison
+- `figures/param_matched/per_snr_test_accuracy.png`: parameter-matched fair comparison
 
 ## Tests
 
